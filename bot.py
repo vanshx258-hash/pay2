@@ -16,9 +16,6 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 OWNER_ID = int(os.environ.get("OWNER_ID", "8586849798"))
 PORT = int(os.environ.get("PORT", 10000))
 
-# Tera Group ID (Sahi format me)
-SMS_GROUP_ID = int(os.environ.get("SMS_GROUP_ID", "-1005351620091")) 
-
 (ASK_UPI_ID,) = range(1)
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -135,13 +132,19 @@ async def check_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await query.edit_message_text("Payment not received yet. Please wait or pay again.")
 
-# ================== GROUP SMS READER ==================
+# ================== AUTO GROUP SMS READER ==================
+# Yeh har us group me chalega jahan tera bot add hai
 async def group_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
         
     text = update.message.text
-    logger.info(f"Group Message Received: {text}")
+    
+    # Check if it looks like the Airtel SMS format
+    if "credited with Rs" not in text and "Txn ID" not in text:
+        return
+        
+    logger.info(f"Valid SMS Detected: {text}")
     
     # Regex to find amount (Rs.1.00 or Rs 1)
     amount_match = re.search(r'(?:Rs\.?|INR)\s*([0-9]+(?:\.[0-9]{1,2})?)', text)
@@ -154,7 +157,7 @@ async def group_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         logger.info(f"Amount detected: {amount}, Txn: {txn_id}")
         
-        # Find pending payment
+        # Find oldest pending payment for this amount
         pending = db_execute("SELECT id, user_id FROM payments WHERE amount=? AND status='PENDING' ORDER BY id ASC LIMIT 1", (amount,))
         
         if pending:
@@ -170,6 +173,8 @@ async def group_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.info(f"User {user_id} notified about payment {txn_id}")
             except Exception as e:
                 logger.error(f"Failed to notify user {user_id}: {e}")
+        else:
+            logger.info("SMS received, but no pending payment found for this amount.")
 
 # ================== MAIN ==================
 def main():
@@ -189,10 +194,10 @@ def main():
     bot_app.add_handler(CallbackQueryHandler(pay_1rs, pattern="^pay_1$"))
     bot_app.add_handler(CallbackQueryHandler(check_status, pattern="^check_status$"))
     
-    # Group Message Handler (Using Chat ID Filter)
-    bot_app.add_handler(MessageHandler(filters.TEXT & filters.Chat(chat_id=SMS_GROUP_ID), group_sms_handler))
+    # Group Message Handler (Har group me kaam karega)
+    bot_app.add_handler(MessageHandler(filters.TEXT & filters.ChatType.GROUPS, group_sms_handler))
     
-    logger.info(f"Payment Bot Started! Monitoring Group: {SMS_GROUP_ID}")
+    logger.info("Payment Bot Started! Listening in all groups.")
     bot_app.run_polling(allowed_updates=Update.ALL_TYPES, close_loop=False)
 
 if __name__ == "__main__":
