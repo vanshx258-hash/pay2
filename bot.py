@@ -16,8 +16,8 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 OWNER_ID = int(os.environ.get("OWNER_ID", "8586849798"))
 PORT = int(os.environ.get("PORT", 10000))
 
-# Jis group me client message bhejenge
-SMS_GROUP_ID = int(os.environ.get("SMS_GROUP_ID", "-1001234567890")) # Yahan apna group ID daal
+# Tera Group ID (Sahi format me)
+SMS_GROUP_ID = int(os.environ.get("SMS_GROUP_ID", "-1005351620091")) 
 
 (ASK_UPI_ID,) = range(1)
 
@@ -136,7 +136,6 @@ async def check_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Payment not received yet. Please wait or pay again.")
 
 # ================== GROUP SMS READER ==================
-# Yeh sirf us specific group me trigger hoga jo tune set kiya hai
 async def group_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
@@ -144,9 +143,9 @@ async def group_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     logger.info(f"Group Message Received: {text}")
     
-    # Regex: Amount nikalne ke liye (Rs.1.00 ya Rs 1)
+    # Regex to find amount (Rs.1.00 or Rs 1)
     amount_match = re.search(r'(?:Rs\.?|INR)\s*([0-9]+(?:\.[0-9]{1,2})?)', text)
-    # Regex: Txn ID nikalne ke liye
+    # Regex to find Txn ID
     txn_match = re.search(r'(?:Txn ID|Txn|Ref)\s*:?\s*([A-Za-z0-9]+)', text)
     
     if amount_match:
@@ -155,14 +154,14 @@ async def group_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         logger.info(f"Amount detected: {amount}, Txn: {txn_id}")
         
-        # Find oldest pending payment
+        # Find pending payment
         pending = db_execute("SELECT id, user_id FROM payments WHERE amount=? AND status='PENDING' ORDER BY id ASC LIMIT 1", (amount,))
         
         if pending:
             payment_id, user_id = pending[0]
             db_execute("UPDATE payments SET status='VERIFIED', txn_id=? WHERE id=?", (txn_id, payment_id))
             
-            # Notify user directly in their chat
+            # Notify user
             try:
                 await bot_app.bot.send_message(
                     chat_id=user_id, 
@@ -190,10 +189,10 @@ def main():
     bot_app.add_handler(CallbackQueryHandler(pay_1rs, pattern="^pay_1$"))
     bot_app.add_handler(CallbackQueryHandler(check_status, pattern="^check_status$"))
     
-    # Sirf specific Group ke messages padhne ke liye filter
+    # Group Message Handler (Using Chat ID Filter)
     bot_app.add_handler(MessageHandler(filters.TEXT & filters.Chat(chat_id=SMS_GROUP_ID), group_sms_handler))
     
-    logger.info("Payment Bot Started!")
+    logger.info(f"Payment Bot Started! Monitoring Group: {SMS_GROUP_ID}")
     bot_app.run_polling(allowed_updates=Update.ALL_TYPES, close_loop=False)
 
 if __name__ == "__main__":
